@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>写真位置マップ</title>
+  <meta name="description" content="JPEG・WebP写真のEXIF GPS情報から位置情報と撮影日時を読み取り、OpenStreetMapおよびGoogleマップ上に表示するスタンドアロンWebアプリです。">
+  <link rel="icon" type="image/png" href="icon.png">
+  <!-- Leaflet CSS (CDN) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
+
+  <style>
+    :root {
+      --font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --bg-app: #f4f6f9;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-active: #eef2ff;
+      --border-color: #e2e8f0;
+      --border-subtle: #cbd5e1;
+      --text-primary: #1e293b;
+      --text-secondary: #64748b;
+      --text-muted: #94a3b8;
+      --primary-color: #3b82f6;
+      --primary-hover: #2563eb;
+      --accent-color: #4f46e5;
+      --accent-hover: #4338ca;
+      --success-color: #10b981;
+      --success-bg: #ecfdf5;
+      --danger-color: #ef4444;
+      --danger-bg: #fef2f2;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      --header-height: 105px;
+      --footer-height: 38px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-family);
+      font-size: 14px;
+      color: var(--text-primary);
+      background-color: var(--bg-app);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body.cursor-wait, body.cursor-wait * { cursor: wait !important; }
+    body.resizing { user-select: none; cursor: col-resize !important; }
+
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Header */
+    .app-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: var(--shadow-sm);
+      z-index: 100;
+    }
+
+    .header-top { display: flex; align-items: center; justify-content: space-between; }
+    .brand-section { display: flex; align-items: center; gap: 10px; }
+    .app-logo { width: 28px; height: 28px; border-radius: var(--radius-sm); }
+    .app-title { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
+
+    .toolbar-actions { display: flex; align-items: center; gap: 10px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      font-family: inherit;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn:hover:not(:disabled) { background: var(--bg-subtle); border-color: var(--border-subtle); transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+    .btn-primary { background: var(--primary-color); color: #ffffff; border-color: var(--primary-hover); }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); color: #ffffff; }
+    .btn-accent { background: var(--accent-color); color: #ffffff; border-color: var(--accent-hover); }
+    .btn-accent:hover:not(:disabled) { background: var(--accent-hover); color: #ffffff; }
+    .btn-danger { background: #ffffff; color: var(--danger-color); border-color: var(--danger-color); }
+    .btn-danger:hover:not(:disabled) { background: var(--danger-bg); }
+
+    .header-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-subtle);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+    }
+
+    .folder-path-box { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--text-secondary); }
+    .folder-path-box .label { font-weight: 600; }
+    .folder-path-box .path-text { font-family: monospace; color: var(--text-primary); word-break: break-all; }
+
+    .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; font-weight: 500; cursor: pointer; user-select: none; }
+    .checkbox-label input { width: 16px; height: 16px; accent-color: var(--primary-color); cursor: pointer; }
+
+    /* Workspace */
+    .paned-window { display: flex; flex: 1; width: 100%; height: calc(100vh - var(--header-height) - var(--footer-height)); position: relative; overflow: hidden; }
+    .pane { display: flex; flex-direction: column; height: 100%; background: var(--bg-surface); overflow: hidden; }
+    .left-pane { width: 42%; border-right: 1px solid var(--border-color); min-width: 320px; }
+    .right-pane { width: 58%; flex: 1; min-width: 350px; }
+    .pane-splitter { width: 6px; background: var(--border-color); cursor: col-resize; transition: background 0.2s; z-index: 10; }
+    .pane-splitter:hover, body.resizing .pane-splitter { background: var(--primary-color); }
+
+    .pane-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-subtle); border-bottom: 1px solid var(--border-color); }
+    .pane-title { font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+
+    .search-filter-box input { padding: 4px 10px; font-size: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); outline: none; width: 180px; }
+    .search-filter-box input:focus { border-color: var(--primary-color); }
+
+    /* Table */
+    .table-container {
+      position: relative;
+      flex: 1;
+      overflow: auto;
+      margin: 8px;
+      border: 2px dashed #93c5fd;
+      border-radius: var(--radius-md);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .table-container::before {
+      content: "写真フォルダ／ファイルをこの一覧へドラッグ＆ドロップ";
+      display: block;
+      padding: 7px 12px;
+      color: var(--primary-hover);
+      background: #eff6ff;
+      border-bottom: 1px solid #bfdbfe;
+      text-align: center;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .table-container.drag-active { border-color: var(--primary-color); background: #eff6ff; }
+    .list-drop-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary-hover);
+      background: rgba(239, 246, 255, 0.96);
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-align: center;
+      pointer-events: none;
+    }
+    .table-container.drag-active .list-drop-overlay { display: flex; }
+    .list-drop-overlay-icon { display: block; margin-bottom: 8px; font-size: 2.8rem; }
+    .photo-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .photo-table th { position: sticky; top: 0; background: #f1f5f9; color: var(--text-secondary); font-weight: 600; font-size: 0.82rem; padding: 8px 12px; border-bottom: 1px solid var(--border-color); z-index: 5; }
+    .photo-table td { padding: 9px 12px; font-size: 0.88rem; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+    .photo-row { cursor: pointer; transition: background 0.1s ease; }
+    .photo-row:hover { background: #f8fafc; }
+    .photo-row.selected { background: var(--bg-active) !important; color: var(--accent-color); }
+    .file-name-cell { display: flex; align-items: center; gap: 10px; }
+    .photo-thumbnail {
+      width: 48px;
+      height: 48px;
+      flex: 0 0 48px;
+      object-fit: cover;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background: var(--bg-subtle);
+      box-shadow: var(--shadow-sm);
+    }
+    .file-name-text { font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+    .gps-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
+    .badge-ok { background: var(--success-bg); color: var(--success-color); border: 1px solid #a7f3d0; }
+    .badge-no { background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border-color); }
+    .badge-err { background: var(--danger-bg); color: var(--danger-color); border: 1px solid #fecaca; }
+
+    .empty-list-msg { text-align: center; padding: 40px 10px; color: var(--text-muted); font-size: 0.9rem; }
+
+    /* Map & Overlays */
+    .map-wrapper { position: relative; flex: 1; width: 100%; height: 100%; background: #e5e7eb; }
+    #leaflet-map { width: 100%; height: 100%; z-index: 1; }
+    .map-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(4px); z-index: 20; display: flex; align-items: center; justify-content: center; }
+    .map-overlay.hidden { opacity: 0; pointer-events: none; }
+    .map-overlay-card { text-align: center; padding: 30px 40px; background: var(--bg-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); border: 1px solid var(--border-color); max-width: 80%; }
+    .map-overlay-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .map-overlay-text { font-size: 1rem; line-height: 1.6; color: var(--text-secondary); font-weight: 500; }
+
+    /* Footer */
+    .app-footer { height: var(--footer-height); background: var(--bg-surface); border-top: 1px solid var(--border-color); padding: 0 16px; display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; color: var(--text-secondary); }
+    .status-summary { display: flex; align-items: center; gap: 16px; }
+    .status-summary strong { color: var(--text-primary); }
+    .copyright-text { font-size: 0.78rem; color: var(--text-muted); }
+
+    /* Modal */
+    .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; }
+    .modal.hidden { display: none; }
+    .modal-backdrop { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
+    .modal-content { position: relative; width: 90%; max-width: 850px; max-height: 85vh; background: var(--bg-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-modal); display: flex; flex-direction: column; overflow: hidden; z-index: 10; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-subtle); }
+    .modal-title { font-size: 1.1rem; font-weight: 700; }
+    .modal-close-btn { background: transparent; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted); }
+    .modal-body { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+
+    .exif-dialog-header-info { display: flex; gap: 16px; background: var(--bg-subtle); padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
+    .exif-thumb-img { width: 90px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }
+    .exif-summary-details { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+    .exif-meta-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .exif-meta-pills .pill { background: var(--bg-surface); padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; border: 1px solid var(--border-color); }
+
+    .exif-table-wrapper { max-height: 400px; overflow: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+    .exif-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .exif-table th { position: sticky; top: 0; background: #f1f5f9; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+    .exif-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+    .col-category { width: 120px; }
+    .col-name { width: 200px; font-weight: 500; }
+    .col-value { font-family: monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-top">
+        <div class="brand-section">
+          <img src="icon.png" alt="写真位置マップ" class="app-logo" onerror="this.style.display='none'" />
+          <h1 class="app-title">写真位置マップ</h1>
+        </div>
+        <div class="toolbar-actions">
+          <button id="btn-folder-select" class="btn btn-primary">📁 フォルダを選択</button>
+          <button id="btn-file-select" class="btn">🖼️ ファイルを選択</button>
+          <button id="btn-cancel-loading" class="btn btn-danger" disabled>🛑 検索を中止</button>
+          <!-- Hidden File Inputs -->
+          <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;" />
+          <input type="file" id="file-input" multiple accept="image/jpeg,image/webp,.jpg,.jpeg,.webp" style="display: none;" />
+        </div>
+      </div>
+      <div class="header-bottom">
+        <div class="folder-path-box">
+          <span class="label">選択フォルダ：</span>
+          <span id="selected-folder-path" class="path-text">未選択</span>
+        </div>
+        <label class="checkbox-label">
+          <input type="checkbox" id="chk-subfolder" checked />
+          サブフォルダも検索
+        </label>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main id="paned-window" class="paned-window">
+      <!-- Left Pane: Photo List -->
+      <section id="left-pane" class="pane left-pane">
+        <div class="pane-header">
+          <span class="pane-title">📷 写真一覧</span>
+          <div class="search-filter-box">
+            <input type="text" id="photo-filter-input" placeholder="一覧を絞り込み..." />
+          </div>
+          <button id="btn-show-exif" class="btn btn-accent" disabled>📋 EXIF情報を表示</button>
+        </div>
+        <div id="table-container" class="table-container">
+          <div id="list-drop-overlay" class="list-drop-overlay">
+            <div><span class="list-drop-overlay-icon">📥</span>ここにドロップして写真を読み込む</div>
+          </div>
+          <table class="photo-table">
+            <thead>
+              <tr>
+                <th class="col-filename">ファイル名</th>
+                <th class="col-taken">撮影日時</th>
+                <th class="col-gps">GPS</th>
+              </tr>
+            </thead>
+            <tbody id="photo-list-body">
+              <tr>
+                <td colspan="3" class="empty-list-msg">
+                  この写真一覧へフォルダ／ファイルをドラッグ＆ドロップしてください
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Pane Splitter -->
+      <div id="pane-splitter" class="pane-splitter" title="ドラッグして左右の幅を調整"></div>
+
+      <!-- Right Pane: OpenStreetMap -->
+      <section id="right-pane" class="pane right-pane">
+        <div class="pane-header">
+          <span class="pane-title">🗺️ 地図 (OpenStreetMap)</span>
+          <button id="btn-open-google-map" class="btn" disabled>🌐 外部ブラウザでGoogleマップを開く</button>
+        </div>
+        <div class="map-wrapper">
+          <div id="leaflet-map"></div>
+          <div id="map-overlay" class="map-overlay">
+            <div class="map-overlay-card">
+              <div class="map-overlay-icon">📍</div>
+              <div id="map-overlay-text" class="map-overlay-text">
+                写真を選択すると、<br />この場所にOpenStreetMapを表示します。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer Status Bar -->
+    <footer class="app-footer">
+      <div class="status-summary">
+        <span class="stat-item">読込写真数：<strong id="stat-total-count">0件</strong></span>
+        <span class="stat-item">GPSあり：<strong id="stat-gps-ok" style="color: var(--success-color);">0件</strong></span>
+        <span class="stat-item">GPSなし：<strong id="stat-gps-no">0件</strong></span>
+        <span class="stat-item">エラー：<strong id="stat-gps-err" style="color: var(--danger-color);">0件</strong></span>
+      </div>
+      <div class="status-message">
+        ステータス：<span id="status-message-text">フォルダまたは写真ファイルを選択してください</span>
+      </div>
+      <div class="copyright-text">
+        Copyright (c) 2026 nstation@nfeed.net. All rights reserved.
+      </div>
+    </footer>
+  </div>
+
+  <!-- EXIF Modal Dialog -->
+  <div id="exif-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-title" class="modal-title">EXIF情報</h2>
+        <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- External CDN Libraries (No npm required!) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+
+  <script>
+    // Pure Standalone Script (Works directly in double-clicked HTML!)
+    (function() {
+      let photoList = [];
+      let selectedPhotoId = null;
+      let isLoading = false;
+      let cancelRequested = false;
+
+      // Leaflet Map Init
+      const map = L.map('leaflet-map').setView([35.6812, 139.7671], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      let activeMarker = null;
+      const markersLayer = L.layerGroup().addTo(map);
+
+      // DOM References
+      const btnFolder = document.getElementById('btn-folder-select');
+      const btnFile = document.getElementById('btn-file-select');
+      const btnCancel = document.getElementById('btn-cancel-loading');
+      const btnExif = document.getElementById('btn-show-exif');
+      const btnGoogle = document.getElementById('btn-open-google-map');
+      const folderInput = document.getElementById('folder-input');
+      const fileInput = document.getElementById('file-input');
+      const chkSubfolder = document.getElementById('chk-subfolder');
+      const filterInput = document.getElementById('photo-filter-input');
+      const listBody = document.getElementById('photo-list-body');
+      const folderPathDisplay = document.getElementById('selected-folder-path');
+      const mapOverlay = document.getElementById('map-overlay');
+      const mapOverlayText = document.getElementById('map-overlay-text');
+      const tableContainer = document.getElementById('table-container');
+      const modal = document.getElementById('exif-modal');
+      const modalClose = document.getElementById('modal-close-btn');
+
+      // Bind Pickers
+      btnFolder.onclick = () => !isLoading && folderInput.click();
+      btnFile.onclick = () => !isLoading && fileInput.click();
+
+      folderInput.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          folderPathDisplay.textContent = e.target.files[0].webkitRelativePath.split('/')[0] || '選択フォルダ';
+          processFiles(Array.from(e.target.files));
+        }
+      };
+
+      fileInput.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          folderPathDisplay.textContent = `${e.target.files.length} 件の写真ファイル`;
+          processFiles(Array.from(e.target.files));
+        }
+      };
+
+      btnCancel.onclick = () => {
+        if (isLoading) {
+          cancelRequested = true;
+          setStatus('検索を中止しています...');
+          btnCancel.disabled = true;
+        }
+      };
+
+      // Drag & Drop
+      ['dragover', 'drop'].forEach(evt => {
+        document.body.addEventListener(evt, e => e.preventDefault());
+      });
+
+      let listDragDepth = 0;
+      tableContainer.addEventListener('dragenter', e => {
+        e.preventDefault();
+        if (isLoading) return;
+        listDragDepth++;
+        tableContainer.classList.add('drag-active');
+      });
+      tableContainer.addEventListener('dragover', e => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+      tableContainer.addEventListener('dragleave', () => {
+        listDragDepth = Math.max(0, listDragDepth - 1);
+        if (listDragDepth === 0) tableContainer.classList.remove('drag-active');
+      });
+
+      tableContainer.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        listDragDepth = 0;
+        tableContainer.classList.remove('drag-active');
+        if (isLoading || !e.dataTransfer) return;
+
+        const files = [];
+        const items = Array.from(e.dataTransfer.items || []);
+
+        for (const item of items) {
+          const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+          if (entry) {
+            if (entry.isDirectory) {
+              await traverseDir(entry, '', files, chkSubfolder.checked);
+            } else if (entry.isFile) {
+              const file = await getFile(entry);
+              if (file && isImage(file.name)) files.push(file);
+            }
+          } else {
+            const file = item.getAsFile();
+            if (file && isImage(file.name)) files.push(file);
+          }
+        }
+
+        // DataTransferItem APIが使えない環境では通常のFile一覧を使う。
+        if (items.length === 0) {
+          Array.from(e.dataTransfer.files || []).forEach(file => {
+            if (isImage(file.name)) files.push(file);
+          });
+        }
+
+        if (files.length > 0) {
+          folderPathDisplay.textContent = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : `${files.length} 件の写真`;
+          processFiles(files);
+        } else {
+          alert('有効なJPEG・WebP写真が見つかりませんでした。');
+        }
+      });
+
+      async function traverseDir(dirEntry, path, resultFiles, includeSub) {
+        const reader = dirEntry.createReader();
+        // Chromium系ブラウザは1回のreadEntriesで最大100件程度しか
+        // 返さないため、空の配列が返るまで繰り返して全件を取得する。
+        while (true) {
+          const entries = await new Promise(res => reader.readEntries(res, () => res([])));
+          if (entries.length === 0) break;
+
+          for (const entry of entries) {
+            if (entry.isFile && isImage(entry.name)) {
+              const f = await getFile(entry);
+              if (f) resultFiles.push(f);
+            } else if (entry.isDirectory && includeSub) {
+              await traverseDir(entry, path + '/' + entry.name, resultFiles, includeSub);
+            }
+          }
+        }
+      }
+
+      function getFile(fileEntry) {
+        return new Promise(res => fileEntry.file(res, () => res(null)));
+      }
+
+      function isImage(filename) {
+        return /\.(jpg|jpeg|webp)$/i.test(filename);
+      }
+
+      // Main Loading Logic
+      async function processFiles(files) {
+        setLoading(true);
+        cancelRequested = false;
+        setStatus('EXIF情報を解析中...');
+
+        const validFiles = files.filter(f => isImage(f.name));
+        validFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+
+        const newPhotoList = [];
+        const includeSub = chkSubfolder.checked;
+
+        for (let i = 0; i < validFiles.length; i++) {
+          if (cancelRequested) break;
+          const file = validFiles[i];
+
+          if (!includeSub && file.webkitRelativePath && file.webkitRelativePath.split('/').length > 2) {
+            continue;
+          }
+
+          let gpsStatus = 'なし';
+          let lat = null, lng = null;
+          let takenAt = '不明';
+          let displayItems = [];
+
+          try {
+            const exif = await exifr.parse(file, true).catch(() => null) || {};
+            const gps = await exifr.gps(file).catch(() => null);
+
+            if (exif.DateTimeOriginal || exif.CreateDate || exif.DateTime) {
+              const d = new Date(exif.DateTimeOriginal || exif.CreateDate || exif.DateTime);
+              if (!isNaN(d.getTime())) {
+                const pad = n => String(n).padStart(2, '0');
+                takenAt = `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+              }
+            }
+
+            if (gps && typeof gps.latitude === 'number' && typeof gps.longitude === 'number') {
+              if (gps.latitude >= -90 && gps.latitude <= 90 && gps.longitude >= -180 && gps.longitude <= 180) {
+                lat = gps.latitude;
+                lng = gps.longitude;
+                gpsStatus = 'あり';
+              } else {
+                gpsStatus = 'エラー';
+              }
+            }
+
+            displayItems = buildDisplayItems(file, exif, lat, lng, takenAt);
+          } catch (e) {
+            gpsStatus = 'エラー';
+          }
+
+          newPhotoList.push({
+            id: 'photo_' + i + '_' + Date.now(),
+            file,
+            fileName: file.name,
+            filePath: file.webkitRelativePath || file.name,
+            takenAt,
+            latitude: lat,
+            longitude: lng,
+            gpsStatus,
+            displayItems,
+            objectUrl: URL.createObjectURL(file)
+          });
+
+          setStatus(`EXIF情報を解析中... (${i + 1} / ${validFiles.length} 件)`);
+
+          // 大量の写真でもキャンセル操作や画面更新を受け付けられるよう、
+          // 一定件数ごとにブラウザへ処理を戻す。
+          if ((i + 1) % 20 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+
+        if (cancelRequested) {
+          newPhotoList.forEach(photo => URL.revokeObjectURL(photo.objectUrl));
+          setStatus('検索を中止しました');
+        } else if (newPhotoList.length === 0) {
+          alert('対象のJPEG・WebP写真が見つかりませんでした。');
+          setStatus('写真が見つかりませんでした');
+        } else {
+          // 再読み込み時に以前のサムネイルURLを解放し、
+          // 大量の写真を繰り返し開いてもメモリを圧迫しないようにする。
+          photoList.forEach(photo => URL.revokeObjectURL(photo.objectUrl));
+          photoList = newPhotoList;
+          selectedPhotoId = null;
+          renderList();
+          updateSummary();
+          plotMarkers();
+          showOverlay('写真を選択すると、<br/>この場所にOpenStreetMapを表示します。');
+          setStatus(`読込完了: ${photoList.length} 件の写真を取得しました`);
+        }
+
+        setLoading(false);
+      }
+
+      function buildDisplayItems(file, exif, lat, lng, takenAt) {
+        const items = [
+          { category: '基本情報', name: 'ファイル名', value: file.name },
+          { category: '基本情報', name: 'ファイルパス', value: file.webkitRelativePath || file.name },
+          { category: '基本情報', name: 'ファイルサイズ', value: (file.size / 1024).toFixed(1) + ' KB' },
+          { category: '主要情報', name: '撮影日時', value: takenAt },
+          { category: '主要情報', name: '緯度', value: lat !== null ? lat.toFixed(6) + '°' : 'なし' },
+          { category: '主要情報', name: '経度', value: lng !== null ? lng.toFixed(6) + '°' : 'なし' }
+        ];
+
+        if (exif.Make) items.push({ category: '主要情報', name: 'メーカー', value: String(exif.Make) });
+        if (exif.Model) items.push({ category: '主要情報', name: 'カメラ機種', value: String(exif.Model) });
+
+        for (const [k, v] of Object.entries(exif)) {
+          if (['Make', 'Model'].includes(k)) continue;
+          items.push({ category: 'EXIFタグ', name: k, value: typeof v === 'object' ? JSON.stringify(v) : String(v) });
+        }
+        return items;
+      }
+
+      function renderList() {
+        const term = (filterInput.value || '').toLowerCase();
+        listBody.innerHTML = '';
+
+        const filtered = photoList.filter(p => p.fileName.toLowerCase().includes(term) || p.takenAt.includes(term));
+        if (filtered.length === 0) {
+          listBody.innerHTML = `<tr><td colspan="3" class="empty-list-msg">該当する写真がありません</td></tr>`;
+          return;
+        }
+
+        filtered.forEach(photo => {
+          const tr = document.createElement('tr');
+          tr.className = 'photo-row' + (photo.id === selectedPhotoId ? ' selected' : '');
+          let bClass = 'badge-no';
+          if (photo.gpsStatus === 'あり') bClass = 'badge-ok';
+          if (photo.gpsStatus === 'エラー') bClass = 'badge-err';
+
+          tr.innerHTML = `
+            <td class="col-filename">
+              <div class="file-name-cell">
+                <img
+                  class="photo-thumbnail"
+                  src="${photo.objectUrl}"
+                  alt=""
+                  loading="lazy"
+                  onerror="this.style.visibility='hidden'"
+                />
+                <span class="file-name-text" title="${escapeHtml(photo.fileName)}">${escapeHtml(photo.fileName)}</span>
+              </div>
+            </td>
+            <td class="col-taken">${escapeHtml(photo.takenAt)}</td>
+            <td class="col-gps"><span class="gps-badge ${bClass}">${photo.gpsStatus}</span></td>
+          `;
+
+          tr.onclick = () => {
+            if (photo.id === selectedPhotoId) {
+              openExifDialog();
+            } else {
+              selectPhoto(photo.id);
+            }
+          };
+          listBody.appendChild(tr);
+        });
+      }
+
+      function selectPhoto(id) {
+        selectedPhotoId = id;
+        renderList();
+
+        const photo = photoList.find(p => p.id === id);
+        if (!photo) return;
+
+        btnExif.disabled = false;
+
+        if (photo.gpsStatus === 'あり' && photo.latitude !== null) {
+          mapOverlay.classList.add('hidden');
+          btnGoogle.disabled = false;
+          map.invalidateSize();
+          map.flyTo([photo.latitude, photo.longitude], 16);
+
+          if (activeMarker) map.removeLayer(activeMarker);
+          activeMarker = L.marker([photo.latitude, photo.longitude]).addTo(map)
+            .bindPopup(`<b>${escapeHtml(photo.fileName)}</b><br>撮影日時: ${escapeHtml(photo.takenAt)}`).openPopup();
+
+          setStatus(`選択中: ${photo.fileName} (${photo.latitude.toFixed(6)}, ${photo.longitude.toFixed(6)})`);
+        } else {
+          showOverlay(photo.gpsStatus === 'エラー' ? '写真情報の読込中にエラーが発生しました。' : 'GPS情報がないため、<br/>この写真の撮影位置を表示できません。');
+          btnGoogle.disabled = true;
+          if (activeMarker) map.removeLayer(activeMarker);
+          setStatus(`選択中: ${photo.fileName} (${photo.gpsStatus})`);
+        }
+      }
+
+      function plotMarkers() {
+        markersLayer.clearLayers();
+        photoList.forEach(photo => {
+          if (photo.gpsStatus === 'あり' && photo.latitude !== null) {
+            const m = L.marker([photo.latitude, photo.longitude]);
+            m.bindTooltip(photo.fileName);
+            m.on('click', () => selectPhoto(photo.id));
+            markersLayer.addLayer(m);
+          }
+        });
+      }
+
+      btnGoogle.onclick = () => {
+        const photo = photoList.find(p => p.id === selectedPhotoId);
+        if (photo && photo.latitude !== null) {
+          window.open(`https://www.google.com/maps/search/?api=1&query=${photo.latitude},${photo.longitude}`, '_blank');
+        }
+      };
+
+      btnExif.onclick = openExifDialog;
+
+      function openExifDialog() {
+        const photo = photoList.find(p => p.id === selectedPhotoId);
+        if (!photo) return;
+
+        document.getElementById('modal-title').textContent = `EXIF情報: ${photo.fileName}`;
+        const body = document.getElementById('modal-body');
+
+        const rows = (photo.displayItems || []).map(item => `
+          <tr>
+            <td class="col-category"><strong>${escapeHtml(item.category)}</strong></td>
+            <td class="col-name">${escapeHtml(item.name)}</td>
+            <td class="col-value"><code>${escapeHtml(item.value)}</code></td>
+          </tr>
+        `).join('');
+
+        body.innerHTML = `
+          <div class="exif-dialog-header-info">
+            <img src="${photo.objectUrl}" class="exif-thumb-img" />
+            <div class="exif-summary-details">
+              <h3>${escapeHtml(photo.fileName)}</h3>
+              <p style="font-family:monospace; font-size:0.85rem; color:#64748b;">${escapeHtml(photo.filePath)}</p>
+              <div class="exif-meta-pills">
+                <span class="pill">撮影日時: <strong>${escapeHtml(photo.takenAt)}</strong></span>
+                <span class="pill">GPS: <strong>${photo.gpsStatus}</strong></span>
+              </div>
+            </div>
+          </div>
+          <div class="exif-table-wrapper">
+            <table class="exif-table">
+              <thead><tr><th>分類</th><th>項目</th><th>値</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+        modal.classList.remove('hidden');
+      }
+
+      modalClose.onclick = () => modal.classList.add('hidden');
+      filterInput.oninput = renderList;
+
+      function showOverlay(htmlText) {
+        mapOverlayText.innerHTML = htmlText;
+        mapOverlay.classList.remove('hidden');
+      }
+
+      function setLoading(b) {
+        isLoading = b;
+        btnFolder.disabled = b;
+        btnFile.disabled = b;
+        chkSubfolder.disabled = b;
+        btnCancel.disabled = !b;
+        document.body.classList.toggle('cursor-wait', b);
+      }
+
+      function setStatus(msg) {
+        document.getElementById('status-message-text').textContent = msg;
+      }
+
+      function updateSummary() {
+        document.getElementById('stat-total-count').textContent = photoList.length + '件';
+        document.getElementById('stat-gps-ok').textContent = photoList.filter(p => p.gpsStatus === 'あり').length + '件';
+        document.getElementById('stat-gps-no').textContent = photoList.filter(p => p.gpsStatus === 'なし').length + '件';
+        document.getElementById('stat-gps-err').textContent = photoList.filter(p => p.gpsStatus === 'エラー').length + '件';
+      }
+
+      function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+      }
+
+      // Pane Resizer
+      const splitter = document.getElementById('pane-splitter');
+      const leftPane = document.getElementById('left-pane');
+      const rightPane = document.getElementById('right-pane');
+      const panedWindow = document.getElementById('paned-window');
+      let isResizing = false;
+
+      splitter.onmousedown = () => { isResizing = true; document.body.classList.add('resizing'); };
+      window.onmousemove = (e) => {
+        if (!isResizing) return;
+        const total = panedWindow.clientWidth;
+        const leftW = e.clientX - panedWindow.getBoundingClientRect().left;
+        const pct = Math.max(20, Math.min(80, (leftW / total) * 100));
+        leftPane.style.width = pct + '%';
+        rightPane.style.width = (100 - pct) + '%';
+        map.invalidateSize();
+      };
+      window.onmouseup = () => { if (isResizing) { isResizing = false; document.body.classList.remove('resizing'); map.invalidateSize(); } };
+    })();
+  </script>
+</body>
+</html>
