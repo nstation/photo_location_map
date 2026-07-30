@@ -207,6 +207,14 @@
 
     /* Map & Overlays */
     .map-wrapper { position: relative; flex: 1; width: 100%; height: 100%; background: #e5e7eb; }
+    .map-options {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 8px 14px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border-color);
+    }
     #leaflet-map { width: 100%; height: 100%; z-index: 1; }
     .map-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(4px); z-index: 20; display: flex; align-items: center; justify-content: center; }
     .map-overlay.hidden { opacity: 0; pointer-events: none; }
@@ -256,11 +264,7 @@
         </div>
         <div class="toolbar-actions">
           <button id="btn-folder-select" class="btn btn-primary">📁 フォルダを選択</button>
-          <button id="btn-file-select" class="btn">🖼️ ファイルを選択</button>
           <button id="btn-cancel-loading" class="btn btn-danger" disabled>🛑 検索を中止</button>
-          <!-- Hidden File Inputs -->
-          <input type="file" id="folder-input" webkitdirectory directory multiple style="display: none;" />
-          <input type="file" id="file-input" multiple accept="image/jpeg,image/webp,.jpg,.jpeg,.webp" style="display: none;" />
         </div>
       </div>
       <div class="header-bottom">
@@ -329,6 +333,12 @@
             </div>
           </div>
         </div>
+        <div class="map-options">
+          <label class="checkbox-label">
+            <input type="checkbox" id="chk-disable-animation" />
+            移動アニメーションを省略
+          </label>
+        </div>
       </section>
     </main>
 
@@ -341,7 +351,7 @@
         <span class="stat-item">エラー：<strong id="stat-gps-err" style="color: var(--danger-color);">0件</strong></span>
       </div>
       <div class="status-message">
-        ステータス：<span id="status-message-text">フォルダまたは写真ファイルを選択してください</span>
+        ステータス：<span id="status-message-text">フォルダを選択するか、写真一覧へ写真をドロップしてください</span>
       </div>
       <div class="copyright-text">
         Copyright (c) 2026 nstation@nfeed.net. All rights reserved.
@@ -384,13 +394,11 @@
 
       // DOM References
       const btnFolder = document.getElementById('btn-folder-select');
-      const btnFile = document.getElementById('btn-file-select');
       const btnCancel = document.getElementById('btn-cancel-loading');
       const btnExif = document.getElementById('btn-show-exif');
       const btnGoogle = document.getElementById('btn-open-google-map');
-      const folderInput = document.getElementById('folder-input');
-      const fileInput = document.getElementById('file-input');
       const chkSubfolder = document.getElementById('chk-subfolder');
+      const chkDisableAnimation = document.getElementById('chk-disable-animation');
       const filterInput = document.getElementById('photo-filter-input');
       const listBody = document.getElementById('photo-list-body');
       const folderPathDisplay = document.getElementById('selected-folder-path');
@@ -400,21 +408,23 @@
       const modal = document.getElementById('exif-modal');
       const modalClose = document.getElementById('modal-close-btn');
 
-      // Bind Pickers
-      btnFolder.onclick = () => !isLoading && folderInput.click();
-      btnFile.onclick = () => !isLoading && fileInput.click();
-
-      folderInput.onchange = (e) => {
-        if (e.target.files.length > 0) {
-          folderPathDisplay.textContent = e.target.files[0].webkitRelativePath.split('/')[0] || '選択フォルダ';
-          processFiles(Array.from(e.target.files));
+      // Native Folder Picker
+      btnFolder.onclick = async () => {
+        if (isLoading) return;
+        if (!window.pywebview || !window.pywebview.api) {
+          alert('ネイティブフォルダ選択を利用できません。アプリから起動してください。');
+          return;
         }
-      };
 
-      fileInput.onchange = (e) => {
-        if (e.target.files.length > 0) {
-          folderPathDisplay.textContent = `${e.target.files.length} 件の写真ファイル`;
-          processFiles(Array.from(e.target.files));
+        try {
+          const selection = await window.pywebview.api.select_folder(chkSubfolder.checked);
+          if (!selection) return;
+          folderPathDisplay.textContent = selection.folder_name;
+          await processNativeFiles(selection.files);
+        } catch (error) {
+          console.error(error);
+          alert('フォルダを選択できませんでした。');
+          setStatus('フォルダ選択中にエラーが発生しました');
         }
       };
 
@@ -514,6 +524,45 @@
         return /\.(jpg|jpeg|webp)$/i.test(filename);
       }
 
+      async function processNativeFiles(relativePaths) {
+        const files = [];
+
+        setLoading(true);
+        cancelRequested = false;
+        setStatus('写真ファイルを読み込み中...');
+
+        for (let i = 0; i < relativePaths.length; i++) {
+          if (cancelRequested) break;
+
+          const relativePath = relativePaths[i];
+          const result = await window.pywebview.api.read_photo(relativePath);
+          if (!result.error) {
+            const binary = atob(result.data);
+            const bytes = new Uint8Array(binary.length);
+            for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+
+            const fileName = relativePath.split('/').pop();
+            const file = new File([bytes], fileName, { type: result.mime_type });
+            Object.defineProperty(file, '_relativePath', { value: relativePath });
+            files.push(file);
+          }
+
+          setStatus(`写真ファイルを読み込み中... (${i + 1} / ${relativePaths.length} 件)`);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        setLoading(false);
+        if (cancelRequested) {
+          setStatus('検索を中止しました');
+          return;
+        }
+        await processFiles(files);
+      }
+
+      function relativePathOf(file) {
+        return file._relativePath || file.webkitRelativePath || file.name;
+      }
+
       // Main Loading Logic
       async function processFiles(files) {
         setLoading(true);
@@ -521,7 +570,7 @@
         setStatus('EXIF情報を解析中...');
 
         const validFiles = files.filter(f => isImage(f.name));
-        validFiles.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name));
+        validFiles.sort((a, b) => relativePathOf(a).localeCompare(relativePathOf(b)));
 
         const newPhotoList = [];
         const includeSub = chkSubfolder.checked;
@@ -570,7 +619,7 @@
             id: 'photo_' + i + '_' + Date.now(),
             file,
             fileName: file.name,
-            filePath: file.webkitRelativePath || file.name,
+            filePath: relativePathOf(file),
             takenAt,
             latitude: lat,
             longitude: lng,
@@ -613,7 +662,7 @@
       function buildDisplayItems(file, exif, lat, lng, takenAt) {
         const items = [
           { category: '基本情報', name: 'ファイル名', value: file.name },
-          { category: '基本情報', name: 'ファイルパス', value: file.webkitRelativePath || file.name },
+          { category: '基本情報', name: 'ファイルパス', value: relativePathOf(file) },
           { category: '基本情報', name: 'ファイルサイズ', value: (file.size / 1024).toFixed(1) + ' KB' },
           { category: '主要情報', name: '撮影日時', value: takenAt },
           { category: '主要情報', name: '緯度', value: lat !== null ? lat.toFixed(6) + '°' : 'なし' },
@@ -688,7 +737,11 @@
           mapOverlay.classList.add('hidden');
           btnGoogle.disabled = false;
           map.invalidateSize();
-          map.flyTo([photo.latitude, photo.longitude], 16);
+          if (chkDisableAnimation.checked) {
+            map.setView([photo.latitude, photo.longitude], 16, { animate: false });
+          } else {
+            map.flyTo([photo.latitude, photo.longitude], 16);
+          }
 
           if (activeMarker) map.removeLayer(activeMarker);
           activeMarker = L.marker([photo.latitude, photo.longitude]).addTo(map)
@@ -772,7 +825,6 @@
       function setLoading(b) {
         isLoading = b;
         btnFolder.disabled = b;
-        btnFile.disabled = b;
         chkSubfolder.disabled = b;
         btnCancel.disabled = !b;
         document.body.classList.toggle('cursor-wait', b);

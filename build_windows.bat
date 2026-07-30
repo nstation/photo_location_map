@@ -15,9 +15,11 @@ if errorlevel 1 goto build_failed
 rmdir /s /q "build"
 rmdir /s /q "build-spec"
 rmdir /s /q "dist"
+rmdir /s /q "__pycache__"
 if exist "build" goto cleanup_failed
 if exist "build-spec" goto cleanup_failed
 if exist "dist" goto cleanup_failed
+if exist "__pycache__" goto cleanup_failed
 
 uv cache prune
 if errorlevel 1 goto build_failed

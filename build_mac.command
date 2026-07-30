@@ -25,7 +25,7 @@ cp -R "dist/PhotoLocationMap.app" "PhotoLocationMap.app.new"
 rm -rf "PhotoLocationMap.app"
 mv "PhotoLocationMap.app.new" "PhotoLocationMap.app"
 
-rm -rf "build" "build-spec" "dist"
+rm -rf "build" "build-spec" "dist" "__pycache__"
 
 uv cache prune
 
