@@ -8,7 +8,7 @@ from pathlib import Path
 import webview
 
 
-APP_NAME = "写真位置マップ"
+APP_NAME = "PhotoLocationMap"
 
 
 def resource_path(filename: str) -> Path:

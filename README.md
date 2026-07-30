@@ -1,7 +1,10 @@
 # 写真位置マップ
 
 JPEG・WebP写真のEXIF GPS情報を読み取り、撮影場所をOpenStreetMapに表示する
-Windows／macOS対応デスクトップアプリです。画面には`index.html`を使用しています。
+Windows／macOS対応デスクトップアプリです。ユーザーインターフェースは
+`index.html`で実装し、pywebviewのネイティブWebView内に表示します。
+ネイティブウィンドウのタイトルと配布ファイル名には`PhotoLocationMap`を使用し、
+画面内には「写真位置マップ」と表示します。
 
 ## 主な機能
 
@@ -17,11 +20,28 @@ Windows／macOS対応デスクトップアプリです。画面には`index.html
 
 - Windows 10／11（64bit）
 - macOS 12以降
-- Python 3.10以降（ソース実行・ビルド時のみ）
+- uv（ソース実行・ビルド時のみ。Python 3.10以降を自動管理）
 - インターネット接続（地図、Leaflet、EXIF解析ライブラリの読み込みに使用）
 
 WindowsではMicrosoft Edge WebView2 Runtimeを使用します。Windows 10／11には通常
 インストールされています。macOSでは標準のWebKitを使用します。
+
+## 開発環境の準備
+
+ソース実行とビルドにはuvを使用します。プロジェクト内に`.venv`は作成しません。
+uvが管理するPythonと一時隔離環境へ`requirements.txt`の依存関係をインストールします。
+
+Windows：
+
+```bat
+winget install --id Astral-sh.uv
+```
+
+macOS：
+
+```bash
+brew install uv
+```
 
 ## ソースから起動
 
@@ -29,22 +49,14 @@ WindowsではMicrosoft Edge WebView2 Runtimeを使用します。Windows 10／11
 
 ```powershell
 cd photo_location_map
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python main.py
+uv run --isolated --no-project --python ">=3.10" --with-requirements requirements.txt main.py
 ```
 
 ### macOS
 
-python.orgからインストールしたPython 3.10以降の利用を推奨します。
-
 ```bash
 cd photo_location_map
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 main.py
+uv run --isolated --no-project --python ">=3.10" --with-requirements requirements.txt main.py
 ```
 
 ## アプリのビルド
@@ -83,11 +95,15 @@ dist/PhotoLocationMap.app
 
 ビルド時にローカル実行用のアドホック署名を付与します。日本語を含むバンドル名で
 署名が失敗する環境があるため、実ファイル名は`PhotoLocationMap.app`です。
-アプリ内の表示名は「写真位置マップ」です。
+ネイティブウィンドウのタイトルは`PhotoLocationMap`です。
 
 別のMacへ配布する場合は、Apple Developer IDによる正式なコード署名と公証を
 推奨します。アドホック署名のみのアプリは、Gatekeeperによって初回起動を
 止められる場合があります。
+
+Windows／macOSのビルドスクリプトは、ビルド成功後に`uv cache prune`を実行し、
+不要なキャッシュと一時環境を整理します。再利用可能なパッケージキャッシュは
+残る場合があります。すべて削除する場合は`uv cache clean`を実行してください。
 
 ## フォルダ構成
 
@@ -99,7 +115,7 @@ photo_location_map/
 ├── build.py            OS判定とPyInstallerビルド
 ├── build_windows.bat   Windows用ビルドスクリプト
 ├── build_mac.command   macOS用ビルドスクリプト
-├── requirements.txt    Python依存パッケージ
+├── requirements.txt    uvが読み込むPython依存パッケージ
 ├── 仕様.md             アプリ仕様
 └── README.md           このファイル
 ```
@@ -119,3 +135,4 @@ photo_location_map/
 - 地図およびCDNライブラリの読み込みにはインターネット接続が必要です。
 - 写真は地図サービスへ送信しません。ブラウザ内でEXIFを解析します。
 - Windows版とMac版の実行ファイルは、各OS上で個別に作成します。
+- ビルドスクリプトの実行にはuvが必要です。配布アプリの利用者には不要です。

@@ -2,17 +2,29 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-  py -3 -m venv .venv
-)
+where uv >nul 2>&1
+if errorlevel 1 goto uv_not_found
 
-".venv\Scripts\python.exe" -m pip install --upgrade pip
-if errorlevel 1 exit /b 1
-".venv\Scripts\python.exe" -m pip install -r requirements.txt
-if errorlevel 1 exit /b 1
-".venv\Scripts\python.exe" build.py
-if errorlevel 1 exit /b 1
+uv run --isolated --no-project --python ">=3.10" --with-requirements requirements.txt build.py
+if errorlevel 1 goto build_failed
+
+uv cache prune
+if errorlevel 1 goto build_failed
 
 echo.
 echo Build completed: dist\PhotoLocationMap.exe
 pause
+exit /b 0
+
+:uv_not_found
+echo.
+echo ERROR: uv was not found.
+echo Install it with: winget install --id Astral-sh.uv
+echo Then open a new command prompt and run this file again.
+goto build_failed
+
+:build_failed
+echo.
+echo Build failed.
+pause
+exit /b 1
