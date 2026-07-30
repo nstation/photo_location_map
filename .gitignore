@@ -3,3 +3,6 @@ build-spec/
 dist/
 __pycache__/
 *.pyc
+*.exe
+/PhotoLocationMap.app/
+/PhotoLocationMap.app.new/

@@ -15,7 +15,19 @@ xattr -cr index.html icon.png main.py
 uv run --isolated --no-project --python ">=3.10" \
   --with-requirements requirements.txt build.py
 
+if [ ! -d "dist/PhotoLocationMap.app" ]; then
+  echo "ERROR: dist/PhotoLocationMap.appが見つかりません。"
+  exit 1
+fi
+
+rm -rf "PhotoLocationMap.app.new"
+cp -R "dist/PhotoLocationMap.app" "PhotoLocationMap.app.new"
+rm -rf "PhotoLocationMap.app"
+mv "PhotoLocationMap.app.new" "PhotoLocationMap.app"
+
+rm -rf "build" "build-spec" "dist"
+
 uv cache prune
 
 echo
-echo "ビルド完了: dist/PhotoLocationMap.app"
+echo "ビルド完了: PhotoLocationMap.app"

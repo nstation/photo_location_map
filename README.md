@@ -75,8 +75,11 @@ build_windows.bat
 出力：
 
 ```text
-dist\PhotoLocationMap.exe
+PhotoLocationMap.exe
 ```
+
+既存の`PhotoLocationMap.exe`がある場合は上書きします。実行中などの理由で
+上書きできない場合は失敗終了し、調査用に作業フォルダを残します。
 
 ### Mac版
 
@@ -90,12 +93,14 @@ chmod +x build_mac.command
 出力：
 
 ```text
-dist/PhotoLocationMap.app
+PhotoLocationMap.app
 ```
 
 ビルド時にローカル実行用のアドホック署名を付与します。日本語を含むバンドル名で
 署名が失敗する環境があるため、実ファイル名は`PhotoLocationMap.app`です。
 ネイティブウィンドウのタイトルは`PhotoLocationMap`です。
+既存のアプリを安全に置き換えるため、一度`PhotoLocationMap.app.new`へコピーして
+から`PhotoLocationMap.app`へ移動します。
 
 別のMacへ配布する場合は、Apple Developer IDによる正式なコード署名と公証を
 推奨します。アドホック署名のみのアプリは、Gatekeeperによって初回起動を
@@ -104,6 +109,15 @@ dist/PhotoLocationMap.app
 Windows／macOSのビルドスクリプトは、ビルド成功後に`uv cache prune`を実行し、
 不要なキャッシュと一時環境を整理します。再利用可能なパッケージキャッシュは
 残る場合があります。すべて削除する場合は`uv cache clean`を実行してください。
+
+PyInstallerは一時的に`build`、`build-spec`、`dist`を使用します。ビルドスクリプトは
+完成した`PhotoLocationMap.exe`または`PhotoLocationMap.app`をプロジェクトルートへ
+配置できたことを確認してから、これら3つの作業フォルダを削除します。成果物と
+一時作業フォルダは`.gitignore`の対象です。
+
+処理順序は「ビルド、成果物の確認、ルートへ配置、作業フォルダ削除、
+`uv cache prune`」です。成果物の確認または配置に失敗した場合は、作業フォルダを
+削除しません。
 
 ## フォルダ構成
 
