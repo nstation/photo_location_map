@@ -82,9 +82,9 @@ def main() -> None:
         APP_NAME,
         url=str(index_path),
         js_api=api,
-        width=1440,
-        height=900,
-        min_size=(1000, 700),
+        width=1024,
+        height=600,
+        min_size=(1024, 580),
         background_color="#f4f6f9",
     )
     api.window = window
