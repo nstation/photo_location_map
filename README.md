@@ -26,7 +26,9 @@ Windows／macOS対応デスクトップアプリです。ユーザーインタ�
 - インターネット接続（OpenStreetMapの地図タイル表示に使用）
 
 WindowsではMicrosoft Edge WebView2 Runtimeを使用します。Windows 10／11には通常
-インストールされています。macOSでは標準のWebKitを使用します。
+インストールされています。Cookieなどを保存する永続ブラウザプロファイルは作成せず、
+Windowsでの初回起動時にWebView2のプロファイル初期化を待たない構成です。
+macOSでは標準のWebKitを使用します。
 
 ## 開発環境の準備
 
