@@ -90,10 +90,7 @@ def main() -> None:
     api.window = window
     # ローカルHTTPサーバー経由でHTMLを表示する。
     # file://特有のブラウザ制限を避け、WindowsとmacOSで挙動を揃える。
-    # このアプリはCookieやlocalStorageを使わない。永続プロファイルを有効にすると、
-    # Windows版WebView2が初回起動時にユーザーデータ領域を作成する過程で長時間
-    # 応答しなくなることがあるため、セッション終了時に破棄されるモードを使う。
-    webview.start(http_server=True, private_mode=True)
+    webview.start(http_server=True, private_mode=False)
 
 
 if __name__ == "__main__":
