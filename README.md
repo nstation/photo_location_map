@@ -23,7 +23,7 @@ Windows／macOS対応デスクトップアプリです。ユーザーインタ�
 - Windows 10／11（64bit）
 - macOS 12以降
 - uv（ソース実行・ビルド時のみ。Python 3.10以降を自動管理）
-- インターネット接続（地図、Leaflet、EXIF解析ライブラリの読み込みに使用）
+- インターネット接続（OpenStreetMapの地図タイル表示に使用）
 
 WindowsではMicrosoft Edge WebView2 Runtimeを使用します。Windows 10／11には通常
 インストールされています。macOSでは標準のWebKitを使用します。
@@ -128,6 +128,7 @@ photo_location_map/
 ├── index.html           アプリ画面・写真処理
 ├── icon.png            画面とアプリのアイコン
 ├── main.py             デスクトップアプリ起動処理
+├── vendor/             Leaflet・exifrとライセンス（アプリへ同梱）
 ├── build.py            OS判定とPyInstallerビルド
 ├── build_windows.bat   Windows用ビルドスクリプト
 ├── build_mac.command   macOS用ビルドスクリプト
@@ -149,7 +150,7 @@ photo_location_map/
 ## 制限事項
 
 - 対応画像はJPEG（`.jpg`、`.jpeg`）とWebP（`.webp`）です。
-- 地図およびCDNライブラリの読み込みにはインターネット接続が必要です。
+- 画面とEXIF解析はオフラインでも起動します。地図タイルの表示にはインターネット接続が必要です。
 - 写真は地図サービスへ送信しません。ブラウザ内でEXIFを解析します。
 - Windows版とMac版の実行ファイルは、各OS上で個別に作成します。
 - ビルドスクリプトの実行にはuvが必要です。配布アプリの利用者には不要です。

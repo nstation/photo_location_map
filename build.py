@@ -18,7 +18,18 @@ def main() -> None:
     if system not in {"Windows", "Darwin"}:
         raise SystemExit("ビルド対応OSはWindowsまたはmacOSです。")
 
-    for required in ("main.py", "index.html", "icon.png"):
+    required_files = (
+        "main.py",
+        "index.html",
+        "icon.png",
+        "vendor/leaflet/leaflet.css",
+        "vendor/leaflet/leaflet.js",
+        "vendor/leaflet/images/marker-icon.png",
+        "vendor/leaflet/images/marker-icon-2x.png",
+        "vendor/leaflet/images/marker-shadow.png",
+        "vendor/exifr/full.umd.js",
+    )
+    for required in required_files:
         if not (PROJECT_DIR / required).is_file():
             raise SystemExit(f"必要なファイルが見つかりません: {required}")
 
@@ -40,6 +51,8 @@ def main() -> None:
         f"{PROJECT_DIR / 'index.html'}:.",
         "--add-data",
         f"{PROJECT_DIR / 'icon.png'}:.",
+        "--add-data",
+        f"{PROJECT_DIR / 'vendor'}:vendor",
         "--distpath",
         str(output_dir),
         "--workpath",
