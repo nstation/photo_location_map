@@ -22,21 +22,26 @@ def resource_path(filename: str) -> Path:
 class AppApi:
     """ネイティブUIとローカル写真読込をJavaScriptへ公開する。"""
 
+    __slots__ = ("_window", "_selected_folder")
+
     def __init__(self) -> None:
-        self.window: webview.Window | None = None
-        self.selected_folder: Path | None = None
+        # pywebviewはjs_apiの公開属性を再帰走査する。Windowを公開属性にすると
+        # WebView2のCOMオブジェクトまで走査してUIスレッドを停止させるため、
+        # JavaScriptへ公開しない内部状態は必ずアンダースコア付きで保持する。
+        self._window: webview.Window | None = None
+        self._selected_folder: Path | None = None
 
     def select_folder(self, include_subfolders: bool) -> dict[str, object] | None:
         """ネイティブダイアログを開き、選択フォルダ内の対象写真を返す。"""
-        if self.window is None:
+        if self._window is None:
             raise RuntimeError("アプリケーションウィンドウが初期化されていません")
 
-        result = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+        result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if not result:
             return None
 
         folder = Path(result[0]).resolve()
-        self.selected_folder = folder
+        self._selected_folder = folder
         candidates = folder.rglob("*") if include_subfolders else folder.iterdir()
         files = []
 
@@ -54,12 +59,12 @@ class AppApi:
 
     def read_photo(self, relative_path: str) -> dict[str, str]:
         """直前に選択したフォルダ内の写真をBase64で返す。"""
-        if self.selected_folder is None:
+        if self._selected_folder is None:
             return {"error": "フォルダが選択されていません"}
 
         try:
-            path = (self.selected_folder / relative_path).resolve()
-            path.relative_to(self.selected_folder)
+            path = (self._selected_folder / relative_path).resolve()
+            path.relative_to(self._selected_folder)
             if path.suffix.lower() not in IMAGE_SUFFIXES or not path.is_file():
                 raise ValueError("対象外のファイルです")
             mime_type = "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
@@ -87,10 +92,13 @@ def main() -> None:
         min_size=(1024, 580),
         background_color="#f4f6f9",
     )
-    api.window = window
+    api._window = window
     # ローカルHTTPサーバー経由でHTMLを表示する。
     # file://特有のブラウザ制限を避け、WindowsとmacOSで挙動を揃える。
-    webview.start(http_server=True, private_mode=False)
+    # このアプリはCookieやlocalStorageを使わない。Windows版WebView2で
+    # 永続プロファイルを初めて作成するときの停止を避けるため、終了時に
+    # ユーザーデータを破棄するプライベートモードで起動する。
+    webview.start(http_server=True, private_mode=True)
 
 
 if __name__ == "__main__":

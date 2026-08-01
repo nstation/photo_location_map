@@ -23,10 +23,27 @@ Windows／macOS対応デスクトップアプリです。ユーザーインタ�
 - Windows 10／11（64bit）
 - macOS 12以降
 - uv（ソース実行・ビルド時のみ。Python 3.10以降を自動管理）
-- インターネット接続（地図、Leaflet、EXIF解析ライブラリの読み込みに使用）
+- インターネット接続（OpenStreetMapの地図タイル表示に使用）
 
 WindowsではMicrosoft Edge WebView2 Runtimeを使用します。Windows 10／11には通常
 インストールされています。macOSでは標準のWebKitを使用します。
+
+## 起動の安定性
+
+Leafletとexifrは`vendor/`へ同梱しているため、起動時にCDNの応答を待ちません。
+Google Fontsも使用せず、OS標準フォントで表示します。インターネット接続がない
+場合も画面とEXIF解析機能は起動し、OpenStreetMapの地図タイルだけが未表示になります。
+
+pywebviewへ公開するPython APIは`select_folder`と`read_photo`の2メソッドだけです。
+ネイティブウィンドウや選択フォルダなどの内部状態は非公開属性として保持し、
+pywebviewがWebView／COMオブジェクトを公開APIとして再帰走査することによる起動時の
+フリーズを防止します。この対策はWindowsとmacOSの共通コードに適用されます。
+
+Windows版では、WebView2のCookieやローカルストレージを保持しないプライベート
+モードを使用します。修正後のWindows配布版は実機で起動し、ウィンドウが応答状態に
+なることを確認しています。Mac版は同じ共通対策を含みますが、macOS上でビルドして
+初回起動を確認してください。ソースや同梱素材を変更した場合、既存の配布ファイル
+には自動反映されないため、対象OS上で再ビルドが必要です。
 
 ## 開発環境の準備
 
@@ -128,6 +145,7 @@ photo_location_map/
 ├── index.html           アプリ画面・写真処理
 ├── icon.png            画面とアプリのアイコン
 ├── main.py             デスクトップアプリ起動処理
+├── vendor/             Leaflet・exifrとライセンス（アプリへ同梱）
 ├── build.py            OS判定とPyInstallerビルド
 ├── build_windows.bat   Windows用ビルドスクリプト
 ├── build_mac.command   macOS用ビルドスクリプト
@@ -149,7 +167,8 @@ photo_location_map/
 ## 制限事項
 
 - 対応画像はJPEG（`.jpg`、`.jpeg`）とWebP（`.webp`）です。
-- 地図およびCDNライブラリの読み込みにはインターネット接続が必要です。
+- 画面とEXIF解析はオフラインでも起動します。地図タイルの表示にはインターネット接続が必要です。
 - 写真は地図サービスへ送信しません。ブラウザ内でEXIFを解析します。
 - Windows版とMac版の実行ファイルは、各OS上で個別に作成します。
+- Mac版の最終動作確認は、ビルドしたmacOS実機上で行う必要があります。
 - ビルドスクリプトの実行にはuvが必要です。配布アプリの利用者には不要です。
